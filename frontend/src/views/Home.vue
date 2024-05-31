@@ -24,19 +24,9 @@ import SalaryIcon from "@/components/icons/SalaryIcon.vue"
 
 const quickLinks = [
 	{
-		icon: markRaw(LeaveIcon),
-		title: "Request Leave",
-		route: "LeaveApplicationFormView",
-	},
-	{
 		icon: markRaw(ExpenseIcon),
 		title: "Claim an Expense",
 		route: "ExpenseClaimFormView",
-	},
-	{
-		icon: markRaw(EmployeeAdvanceIcon),
-		title: "Request an Advance",
-		route: "EmployeeAdvanceFormView",
 	},
 	{
 		icon: markRaw(SalaryIcon),
