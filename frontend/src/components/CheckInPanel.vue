@@ -1,40 +1,40 @@
 <template>
 	<div class="flex flex-col bg-white rounded w-full py-6 px-4 border-none">
-		<h2 class="text-lg font-bold text-gray-900">Hey, {{ employee?.data?.first_name }} 👋</h2>
-
-		<template v-if="settings.data?.allow_employee_checkin_from_mobile_app">
-			<div class="font-medium text-sm text-gray-500 mt-1.5" v-if="lastLog">
-				Last {{ lastLogType }} was at {{ lastLogTime }}
-			</div>
-			<Button
-				class="mt-4 mb-1 drop-shadow-sm py-5 text-base"
-				id="open-checkin-modal"
-				@click="handleEmployeeCheckin"
-			>
-				<template #prefix>
-					<FeatherIcon
-						:name="nextAction.action === 'IN' ? 'arrow-right-circle' : 'arrow-left-circle'"
-						class="w-4"
-					/>
-				</template>
-				{{ nextAction.label }}
-			</Button>
-		</template>
-
-		<div v-else class="font-medium text-sm text-gray-500 mt-1.5">
-			{{ dayjs().format("ddd, D MMMM, YYYY") }}
+		<h2 class="text-lg font-bold text-gray-900">
+			Hey, {{ employee?.data?.first_name }} 👋
+		</h2>
+		<div class="font-medium text-sm text-gray-500 mt-1.5" v-if="lastLog">
+			Last {{ lastLogType }} was at {{ lastLogTime }}
 		</div>
+		<Button
+			class="mt-4 mb-1 drop-shadow-sm py-5 text-base"
+			id="open-checkin-modal"
+			@click="handleCheckIn"
+		>
+			<template #prefix>
+				<FeatherIcon
+					:name="
+						nextAction.action === 'IN'
+							? 'arrow-right-circle'
+							: 'arrow-left-circle'
+					"
+					class="w-4"
+				/>
+			</template>
+			{{ nextAction.label }}
+		</Button>
 	</div>
 
 	<ion-modal
-		v-if="settings.data?.allow_employee_checkin_from_mobile_app"
 		ref="modal"
 		trigger="open-checkin-modal"
 		:initial-breakpoint="1"
 		:breakpoints="[0, 1]"
 	>
-		<div class="h-120 w-full flex flex-col items-center justify-center gap-5 p-4 mb-5">
-			<div class="flex flex-col gap-1.5 mt-2 items-center justify-center">
+		<div
+			class="h-40 w-full flex flex-col items-center justify-center gap-5 p-4 mb-5"
+		>
+			<div class="flex flex-col gap-1.5 items-center justify-center">
 				<div class="font-bold text-xl">
 					{{ dayjs(checkinTimestamp).format("hh:mm:ss a") }}
 				</div>
@@ -42,28 +42,11 @@
 					{{ dayjs().format("D MMM, YYYY") }}
 				</div>
 			</div>
-
-			<template v-if="settings.data?.allow_geolocation_tracking">
-				<span v-if="locationStatus" class="font-medium text-gray-500 text-sm">
-					{{ locationStatus }}
-				</span>
-
-				<div class="rounded border-4 translate-z-0 block overflow-hidden w-full h-170">
-					<iframe
-						width="100%"
-						height="170"
-						frameborder="0"
-						scrolling="no"
-						marginheight="0"
-						marginwidth="0"
-						style="border: 0"
-						:src="`https://maps.google.com/maps?q=${latitude},${longitude}&hl=en&z=15&amp;output=embed`"
-					>
-					</iframe>
-				</div>
-			</template>
-
-			<Button variant="solid" class="w-full py-5 text-sm" @click="submitLog(nextAction.action)">
+			<Button
+				variant="solid"
+				class="w-full py-5 text-sm"
+				@click="submitLog(nextAction.action)"
+			>
 				Confirm {{ nextAction.label }}
 			</Button>
 		</div>
@@ -71,28 +54,46 @@
 </template>
 
 <script setup>
-import { createResource, createListResource, toast, FeatherIcon } from "frappe-ui"
-import { computed, inject, ref, onMounted, onBeforeUnmount } from "vue"
+import { createListResource, toast, FeatherIcon } from "frappe-ui"
+import { computed, inject, ref, onMounted, onBeforeUnmount, watch } from "vue"
 import { IonModal, modalController } from "@ionic/vue"
+import * as turf from "@turf/turf"
+import { FrappeApp } from "frappe-js-sdk"
+
+const getSiteName = () => {
+	if (
+		window.frappe?.boot?.versions?.frappe &&
+		(window.frappe.boot.versions.frappe.startsWith("15") ||
+			window.frappe.boot.versions.frappe.startsWith("16"))
+	) {
+		return window.frappe?.boot?.sitename ?? import.meta.env.VITE_SITE_NAME
+	}
+	return import.meta.env.VITE_SITE_NAME
+}
 
 const DOCTYPE = "Employee Checkin"
+const siteurl = getSiteName()
+const frappe = new FrappeApp(siteurl)
+const db = frappe.db()
+let centerCoordinates = null
+let custom_area = null
+let centerCoordinatesArray = null
 
 const socket = inject("$socket")
 const employee = inject("$employee")
 const dayjs = inject("$dayjs")
 const checkinTimestamp = ref(null)
-const latitude = ref(0)
-const longitude = ref(0)
-const locationStatus = ref("")
-
-const settings = createResource({
-	url: "hrms.api.get_hr_settings",
-	auto: true,
-})
 
 const checkins = createListResource({
 	doctype: DOCTYPE,
-	fields: ["name", "employee", "employee_name", "log_type", "time", "device_id"],
+	fields: [
+		"name",
+		"employee",
+		"employee_name",
+		"log_type",
+		"time",
+		"device_id",
+	],
 	filters: {
 		employee: employee.data.name,
 	},
@@ -120,81 +121,82 @@ const lastLogTime = computed(() => {
 	const formattedTime = dayjs(timestamp).format("hh:mm a")
 
 	if (dayjs(timestamp).isToday()) return formattedTime
-	else if (dayjs(timestamp).isYesterday()) return `${formattedTime} yesterday`
+	else if (dayjs(timestamp).isYesterday()) return ${formattedTime} yesterday
 	else if (dayjs(timestamp).isSame(dayjs(), "year"))
-		return `${formattedTime} on ${dayjs(timestamp).format("D MMM")}`
+		return ${formattedTime} on ${dayjs(timestamp).format("D MMM")}
 
-	return `${formattedTime} on ${dayjs(timestamp).format("D MMM, YYYY")}`
+	return ${formattedTime} on ${dayjs(timestamp).format("D MMM, YYYY")}
 })
 
-function handleLocationSuccess(position) {
-	latitude.value = position.coords.latitude
-	longitude.value = position.coords.longitude
+const userPosition = ref(null)
+const isInside = ref(null)
+const count = ref(0)
+let userdetails = null
 
-	locationStatus.value = `
-		Latitude: ${Number(latitude.value).toFixed(5)}°,
-		Longitude: ${Number(longitude.value).toFixed(5)}°
-	`
-}
-
-function handleLocationError(error) {
-	locationStatus.value = "Unable to retrieve your location"
-	if (error) locationStatus.value += `: ERROR(${error.code}): ${error.message}`
-}
-
-const fetchLocation = () => {
-	if (!navigator.geolocation) {
-		locationStatus.value = "Geolocation is not supported by your current browser"
-	} else {
-		locationStatus.value = "Locating..."
-		navigator.geolocation.getCurrentPosition(handleLocationSuccess, handleLocationError)
+const fetchShiftAssignments = async () => {
+	try {
+		const docs = await db.getDocList("Shift Assignment", {
+			filters: [["employee_name", "=", employee.data.employee_name]],
+		})
+		if (docs && docs.length > 0) {
+			const docID = docs[0].name
+			const mainDoc = await db.getDoc("Shift Assignment", docID)
+			userdetails = mainDoc.shift_type
+		} else {
+			console.log("No shift assignments found for the employee.")
+		}
+	} catch (error) {
+		console.error(error)
 	}
 }
 
-const handleEmployeeCheckin = () => {
-	checkinTimestamp.value = dayjs().format("YYYY-MM-DD HH:mm:ss")
-
-	if (settings.data?.allow_geolocation_tracking) {
-		fetchLocation()
+const getdocfun = async () => {
+	try {
+		if (userdetails) {
+			const docs = await db.getDoc("Shift Type", userdetails)
+			centerCoordinates = docs.custom_coordinates_
+			custom_area = docs.custom_area
+			centerCoordinatesArray = centerCoordinates.split(",").map(Number)
+		} else {
+			console.log("User details not set.")
+		}
+	} catch (error) {
+		console.error(error)
 	}
 }
 
-const submitLog = (logType) => {
-	const action = logType === "IN" ? "Check-in" : "Check-out"
+onMounted(async () => {
+	if (employee.data.name) {
+		await fetchShiftAssignments()
+		await getdocfun()
+	}
 
-	checkins.insert.submit(
-		{
-			employee: employee.data.name,
-			log_type: logType,
-			time: checkinTimestamp.value,
-			latitude: latitude.value,
-			longitude: longitude.value,
-		},
-		{
-			onSuccess() {
-				modalController.dismiss()
-				toast({
-					title: "Success",
-					text: `${action} successful!`,
-					icon: "check-circle",
-					position: "bottom-center",
-					iconClasses: "text-green-500",
-				})
+	if (navigator.geolocation && count.value === 0) {
+		navigator.geolocation.getCurrentPosition(
+			(position) => {
+				const { latitude, longitude } = position.coords
+				userPosition.value = [latitude, longitude]
+				console.log("Retrieved location:", userPosition.value)
+				count.value = 1
 			},
-			onError() {
+			(error) => {
+				console.error("Error getting location:", error)
 				toast({
 					title: "Error",
-					text: `${action} failed!`,
+					text: "Unable to fetch your location. Please ensure location services are enabled.",
 					icon: "alert-circle",
 					position: "bottom-center",
 					iconClasses: "text-red-500",
 				})
 			},
-		}
-	)
-}
+			{
+				enableHighAccuracy: true,
+				timeout: 5000,
+				maximumAge: 0,
+			}
+		)
+	}
 
-onMounted(() => {
 	socket.emit("doctype_subscribe", DOCTYPE)
 	socket.on("list_update", (data) => {
 		if (data.doctype == DOCTYPE) {
@@ -207,4 +209,104 @@ onBeforeUnmount(() => {
 	socket.emit("doctype_unsubscribe", DOCTYPE)
 	socket.off("list_update")
 })
+
+watch(
+	() => employee.data,
+	(newVal) => {
+		if (newVal && newVal.name) {
+			fetchShiftAssignments()
+		}
+	}
+)
+
+watch([userPosition, count], async () => {
+	if (userPosition.value && count.value === 1) {
+		const centerPoint = turf.point(centerCoordinatesArray)
+		const userPoint = turf.point(userPosition.value)
+		const radius = custom_area
+		const options = {
+			steps: 64,
+			units: "kilometers",
+		}
+		const circle = turf.circle(centerPoint, radius, options)
+		console.log("User position:", userPosition.value)
+		console.log("Center coordinates2:", centerPoint)
+		console.log("Circle:", circle)
+		console.log("radius:", radius)
+		const inside = turf.booleanPointInPolygon(userPoint, circle)
+		console.log("Is inside:", inside)
+		isInside.value = inside
+		count.value = 2
+	}
+})
+
+const handleCheckIn = () => {
+	if (count.value === 1) {
+		if (isInside.value) {
+			checkinTimestamp.value = dayjs().format("YYYY-MM-DD HH:mm:ss")
+			modalController.present("open-checkin-modal")
+		} else {
+			toast({
+				title: "Error",
+				text: "You are outside the specified area and cannot check in.",
+				icon: "alert-circle",
+				position: "bottom-center",
+				iconClasses: "text-red-500",
+			})
+		}
+	} else {
+		toast({
+			title: "Error",
+			text: userPosition,
+			icon: "alert-circle",
+			position: "bottom-center",
+			iconClasses: "text-red-500",
+		})
+	}
+}
+
+const submitLog = (logType) => {
+	if (!isInside.value) {
+		toast({
+			title: "Error",
+			text: "You are outside the specified area and cannot check in.",
+			icon: "alert-circle",
+			position: "bottom-center",
+			iconClasses: "text-red-500",
+		})
+		return
+	}
+
+	const action = logType === "IN" ? "Check-in" : "Check-out"
+
+	checkins.insert.submit(
+		{
+			employee: employee.data.name,
+			username: employee.data.name,
+			log_type: logType,
+			time: checkinTimestamp.value,
+		},
+		{
+			onSuccess() {
+				modalController.dismiss()
+				toast({
+					title: "Success",
+					text: ${action} successful!,
+					icon: "check-circle",
+					position: "bottom-center",
+					iconClasses: "text-green-500",
+				})
+			},
+			onError() {
+				toast({
+					title: "Error",
+					text: ${action} failed!,
+					icon: "alert-circle",
+					position: "bottom-center",
+					iconClasses: "text-red-500",
+				})
+			},
+		}
+	)
+}
 </script>
